@@ -1,0 +1,330 @@
+<script setup lang="ts">
+import type { Ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
+import { NAutoComplete, NButton, NInput, useDialog, useMessage } from 'naive-ui'
+import { toPng } from 'html-to-image'
+import HeaderComponent from './components/Header/index.vue'
+import { useUsingContext } from './hooks/useUsingContext'
+import { useScroll } from './hooks/useScroll'
+import { Message } from './components'
+import { useChat } from './hooks/useChat'
+import { useBasicLayout } from '@/hooks/useBasicLayout'
+import { HoverButton, SvgIcon } from '@/components/common'
+import { useChatStore } from '@/store'
+import { t } from '@/locales'
+
+const { log } = console
+
+// AbortController 是一个 Web API，它允许你取消一个或多个由 fetch API 发起的网络请求
+let controller = new AbortController()
+
+const { isMobile } = useBasicLayout()
+const { scrollRef, scrollToBottom, scrollToBottomIfAtBottom } = useScroll()
+const { addChat } = useChat()
+const { usingContext, toggleUsingContext } = useUsingContext()
+
+const route = useRoute()
+const dialog = useDialog()
+const chatStore = useChatStore()
+const ms = useMessage()
+const { uuid } = route.params as { uuid: string }
+
+const dataSources = computed(() => chatStore.getChatByUuid(+uuid))
+const conversationList = computed(() => dataSources.value.filter(item => (!item.inversion && !!item.conversationOptions)))
+
+const footerClass = computed(() => {
+  let classes = ['p-4']
+  if (isMobile.value)
+    classes = ['sticky', 'left-0', 'bottom-0', 'right-0', 'p-2', 'pr-3', 'overflow-hidden']
+  return classes
+})
+
+// 输入框 ref
+const prompt = ref<string>('')
+const loading = ref<boolean>(false)
+const inputRef = ref<Ref | null>(null)
+
+const buttonDisabled = computed(() => {
+  return loading.value || !prompt.value || prompt.value.trim() === ''
+})
+
+// 输入框提示词
+const placeholder = computed(() => {
+  if (isMobile.value)
+    return t('chat.placeholderMobile')
+  return t('chat.placeholder')
+})
+
+onMounted(() => {
+  scrollToBottom()
+  if (inputRef.value && !isMobile.value)
+    inputRef.value?.focus()
+})
+
+// 发送事件
+function handleSubmit() {
+  onConversation()
+}
+// 输入框 回车事件
+function handleEnter(event: KeyboardEvent) {
+  if (!isMobile.value) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      handleSubmit()
+    }
+  }
+  else {
+    if (event.key === 'Enter' && event.ctrlKey) {
+      event.preventDefault()
+      handleSubmit()
+    }
+  }
+}
+// 发送信息与回复操作
+async function onConversation() {
+  // 获取输入值
+  const message = prompt.value
+
+  if (loading.value)
+    return
+
+  if (!message || message.trim() === '')
+    return
+
+  controller = new AbortController()
+
+  // 添加聊天记录
+  addChat(
+    +uuid,
+    {
+      dateTime: new Date().toLocaleString(),
+      text: message,
+      inversion: true,
+      error: false,
+      conversationOptions: null,
+      requestOptions: { prompt: message, options: null },
+    },
+  )
+
+  // 滚动到底部
+  scrollToBottom()
+
+  // 状态清除
+  loading.value = true
+  prompt.value = ''
+
+  let options: Chat.ConversationRequest = {}
+  const lastContext = conversationList.value[conversationList.value.length - 1]?.conversationOptions
+  log('lastContext', lastContext)
+
+  if (lastContext && usingContext.value)
+    options = { ...lastContext }
+
+  // 首先添加回答模板，思考中...
+  addChat(
+    +uuid,
+    {
+      dateTime: new Date().toLocaleString(),
+      text: t('chat.thinking'),
+      loading: true,
+      inversion: false,
+      error: false,
+      conversationOptions: null,
+      requestOptions: { prompt: message, options: { ...options } },
+    },
+  )
+  // 滚动到底部
+  scrollToBottom()
+
+  // try {
+
+  // }
+  // catch {
+
+  // }
+  // finally {
+  //   loading.value = true
+  // }
+}
+
+// 停止响应
+function handleStop() {
+  if (loading.value) {
+    controller.abort()
+    loading.value = false
+  }
+}
+
+// 删除指定聊天记录
+function handleDelete(index: number) {
+  if (loading.value)
+    return
+
+  dialog.warning({
+    title: t('chat.deleteMessage'),
+    content: t('chat.deleteMessageConfirm'),
+    positiveText: t('common.yes'),
+    negativeText: t('common.no'),
+    onPositiveClick: () => {
+      chatStore.deleteChatByUuid(+uuid, index)
+    },
+  })
+}
+
+// 清除聊天记录
+function handleClear() {
+  if (dataSources.value.length === 0) {
+    ms.warning(t('chat.warningChatHistory'))
+    return
+  }
+
+  if (loading.value)
+    return
+
+  dialog.warning({
+    title: t('chat.deleteMessage'),
+    content: t('chat.clearHistoryConfirm'),
+    positiveText: t('common.yes'),
+    negativeText: t('common.no'),
+    onPositiveClick: () => {
+      chatStore.clearChatByUuid(+uuid)
+    },
+  })
+}
+
+function handleExport() {
+  if (dataSources.value.length === 0) {
+    ms.warning(t('chat.warningChatHistory'))
+    return
+  }
+
+  if (loading.value)
+    return
+
+  const d = dialog.warning({
+    title: t('chat.exportImage'),
+    content: t('chat.exportImageConfirm'),
+    positiveText: t('common.yes'),
+    negativeText: t('common.no'),
+    onPositiveClick: async () => {
+      try {
+        d.loading = true
+        const ele = document.getElementById('image-wrapper')
+        const imgUrl = await toPng(ele as HTMLDivElement)
+        const tempLink = document.createElement('a')
+        tempLink.style.display = 'none'
+        tempLink.href = imgUrl
+        tempLink.setAttribute('download', 'chatShot.png')
+        if (typeof tempLink.download === 'undefined')
+          tempLink.setAttribute('target', '_blank')
+        document.body.appendChild(tempLink)
+        tempLink.click()
+        document.body.removeChild(tempLink)
+        window.URL.revokeObjectURL(imgUrl)
+        d.loading = false
+        ms.success(t('chat.exportSuccess'))
+        Promise.resolve()
+      }
+      catch (error: any) {
+        ms.error(t('chat.exportFailed'))
+      }
+      finally {
+        d.loading = false
+      }
+    },
+  })
+}
+</script>
+
+<template>
+  <div class="flex flex-col h-full">
+    <HeaderComponent
+      v-if="isMobile"
+      @handle-clear="handleClear"
+      @export="handleExport"
+    />
+    <main class="flex-1 overflow-hidden">
+      <div id="scrollRef" ref="scrollRef" class="h-full overflow-hidden overflow-y-auto">
+        <div
+          class="w-full max-w-screen-xl m-auto dark:bg-[#101014]"
+          :class="[isMobile ? 'p-2' : 'p-4']"
+        >
+          <div id="image-wrapper" class="relative">
+            <template v-if="!dataSources.length">
+              <div class="flex items-center justify-center mt-4 text-center text-neutral-300">
+                <SvgIcon icon="ri:bubble-chart-fill" class="mr-2 text-3xl" />
+                <span>{{ t('chat.newChatTitle') }}</span>
+              </div>
+            </template>
+            <template v-else>
+              <div>
+                <Message
+                  v-for="(item, index) of dataSources"
+                  :key="index"
+                  :date-time="item.dateTime"
+                  :text="item.text"
+                  :inversion="item.inversion"
+                  :error="item.error"
+                  :loading="item.loading"
+                  @delete="handleDelete(index)"
+                />
+                <div class="sticky bottom-0 left-0 flex justify-center">
+                  <NButton v-if="loading" type="warning" @click="handleStop">
+                    <template #icon>
+                      <SvgIcon icon="ri:stop-circle-line" />
+                    </template>
+                    {{ t('common.stopResponding') }}
+                  </NButton>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+    </main>
+    <footer :class="footerClass">
+      <div class="w-full max-w-screen-xl m-auto">
+        <div class="flex items-center justify-between space-x-2">
+          <HoverButton v-if="!isMobile" @click="handleClear">
+            <span class="text-xl text-[#4f555e] dark:text-white">
+              <SvgIcon icon="ri:delete-bin-line" />
+            </span>
+          </HoverButton>
+          <HoverButton v-if="!isMobile" @click="handleExport">
+            <span class="text-xl text-[#4f555e] dark:text-white">
+              <SvgIcon icon="ri:download-2-line" />
+            </span>
+          </HoverButton>
+          <HoverButton>
+            <span class="text-xl" :class="{ 'text-[#4b9e5f]': usingContext, 'text-[#a8071a]': !usingContext }">
+              <SvgIcon icon="ri:chat-history-line" />
+            </span>
+          </HoverButton>
+          <NAutoComplete>
+            <template #default="{ handleInput, handleBlur, handleFocus }">
+              <NInput
+                ref="inputRef"
+                v-model:value="prompt"
+                type="textarea"
+                :autosize="{ minRows: 1, maxRows: isMobile ? 4 : 8 }"
+                :placeholder="placeholder"
+                @input="handleInput"
+                @focus="handleFocus"
+                @blur="handleBlur"
+                @keypress="handleEnter"
+              />
+            </template>
+          </NAutoComplete>
+          <NButton type="primary" :disabled="buttonDisabled" @click="handleSubmit">
+            <template #icon>
+              <span class="dark:text-black">
+                <SvgIcon icon="ri:send-plane-fill" />
+              </span>
+            </template>
+          </NButton>
+        </div>
+      </div>
+    </footer>
+  </div>
+</template>
