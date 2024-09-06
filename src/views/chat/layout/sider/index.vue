@@ -1,12 +1,12 @@
 <script lang="ts" setup>
 import type { CSSProperties } from 'vue'
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { NButton, NLayoutSider, useDialog, useMessage } from 'naive-ui'
 import Footer from './Footer.vue'
 import List from './List.vue'
 import { useBasicLayout } from '@/hooks/useBasicLayout'
 import { useAppStore, useChatStore } from '@/store'
-import { SvgIcon } from '@/components/common'
+import { PromptStore, SvgIcon } from '@/components/common'
 import { t } from '@/locales'
 
 const appStore = useAppStore()
@@ -14,6 +14,8 @@ const chatStore = useChatStore()
 const ms = useMessage()
 
 const dialog = useDialog()
+
+const show = ref(false)
 
 // 移动端true,PC端false
 const { isMobile } = useBasicLayout()
@@ -113,7 +115,7 @@ watch(
         </div>
         <div class="flex items-center p-4 space-x-4">
           <div class="flex-1">
-            <NButton block>
+            <NButton block @click="show = true">
               {{ $t('store.siderButton') }}
             </NButton>
           </div>
@@ -128,4 +130,5 @@ watch(
   <template v-if="isMobile">
     <div v-show="!collapsed" class="fixed inset-0 z-40 w-full h-full bg-black/40" @click="handleUpdateCollapsed" />
   </template>
+  <PromptStore v-model:visible="show" />
 </template>
