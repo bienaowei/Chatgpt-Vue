@@ -15,8 +15,6 @@ import { useChatStore } from '@/store'
 import { fetchChatAPIProcess } from '@/api'
 import { t } from '@/locales'
 
-const { log } = console
-
 // AbortController 是一个 Web API，它允许你取消一个或多个由 fetch API 发起的网络请求
 let controller = new AbortController()
 
@@ -119,7 +117,6 @@ async function onConversation() {
 
   let options: Chat.ConversationRequest = {}
   const lastContext = conversationList.value[conversationList.value.length - 1]?.conversationOptions
-  log('lastContext', lastContext)
 
   if (lastContext && usingContext.value)
     options = { ...lastContext }
@@ -470,6 +467,7 @@ function handleExport() {
                   :inversion="item.inversion"
                   :error="item.error"
                   :loading="item.loading"
+                  @regenerate="onRegenerate(index)"
                   @delete="handleDelete(index)"
                 />
                 <div class="sticky bottom-0 left-0 flex justify-center">

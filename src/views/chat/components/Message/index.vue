@@ -34,6 +34,13 @@ const message = useMessage()
 
 const asRawText = ref(props.inversion)
 
+const messageRef = ref<HTMLElement>()
+
+function handleRegenerate() {
+  messageRef.value?.scrollIntoView()
+  emit('regenerate')
+}
+
 const options = computed(() => {
   const common = [
     {
@@ -114,7 +121,9 @@ function handleSelect(key: 'copyText' | 'delete' | 'toggleRenderType') {
         <div class="flex flex-col">
           <button
             v-if="!inversion"
-            class="mb-2 transition text-neutral-300 hover:text-neutral-800 dark:hover:text-neutral-300"
+            class="mb-2 transition text-neutral-300 hover:text-neutral-800
+             dark:hover:text-neutral-300"
+            @click="handleRegenerate"
           >
             <SvgIcon icon="ri:restart-line" />
           </button>
@@ -124,7 +133,10 @@ function handleSelect(key: 'copyText' | 'delete' | 'toggleRenderType') {
             :options="options"
             @select="handleSelect"
           >
-            <button class="transition text-neutral-300 hover:text-neutral-800 dark:hover:text-neutral-200">
+            <button
+              class="transition text-neutral-300
+             hover:text-neutral-800 dark:hover:text-neutral-200"
+            >
               <SvgIcon icon="ri:more-2-fill" />
             </button>
           </NDropdown>
